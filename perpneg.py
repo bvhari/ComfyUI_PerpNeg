@@ -401,14 +401,6 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
         if math.isclose(cond_scale, 1.0):
             uncond = None
 
-        # cond, uncond = calc_cond_uncond_batch(
-        #     model_function, cond, uncond, x, timestep, max_total_area, cond_concat, model_options)
-        # if "sampler_cfg_function" in model_options:
-        #     args = {"cond": cond, "uncond": uncond,
-        #             "cond_scale": cond_scale, "timestep": timestep}
-        #     return model_options["sampler_cfg_function"](args)
-        # else:
-        #     return uncond + (cond - uncond) * cond_scale
         noise_pred_pos, noise_pred_neg = calc_cond_uncond_batch(
             model_function, cond, uncond, x, timestep, max_total_area, cond_concat, model_options)
         noise_pred_nocond, _ = calc_cond_uncond_batch(
@@ -416,7 +408,7 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
 
         pos = noise_pred_pos - noise_pred_nocond
         neg = noise_pred_neg - noise_pred_nocond
-        perp = pos - ((torch.mul(pos, neg).sum())/(torch.norm(neg)**2)) * neg
+        perp = ((torch.mul(pos, neg).sum())/(torch.norm(neg)**2)) * neg
         perp_neg = perp * neg_scale
 
         if (extra_options_perpneg['tonemap'] & extra_options_perpneg['rescale_cfg']):
@@ -483,16 +475,24 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
 
         return x_final
 
+    original_sampling_function = comfy.samplers.sampling_function
     comfy.samplers.sampling_function = sampling_function_perpneg
 
     sampler = comfy.samplers.KSampler(real_model, steps=steps, device=device, sampler=sampler_name,
                                       scheduler=scheduler, denoise=denoise, model_options=model.model_options)
 
-    samples = sampler.sample(noise, positive_copy, negative_copy, cfg=cfg, latent_image=latent_image, start_step=start_step, last_step=last_step,
-                             force_full_denoise=force_full_denoise, denoise_mask=noise_mask, sigmas=sigmas, callback=callback, disable_pbar=disable_pbar, seed=seed)
+    try:
+        samples = sampler.sample(noise, positive_copy, negative_copy, cfg=cfg, latent_image=latent_image, start_step=start_step, last_step=last_step,
+                                 force_full_denoise=force_full_denoise, denoise_mask=noise_mask, sigmas=sigmas, callback=callback, disable_pbar=disable_pbar, seed=seed)
+    except comfy.model_management.InterruptProcessingException:
+        comfy.samplers.sampling_function = original_sampling_function
+        raise comfy.model_management.InterruptProcessingException()
+
     samples = samples.cpu()
 
     cleanup_additional_models(models)
+    comfy.samplers.sampling_function = original_sampling_function
+
     return samples
 
 
