@@ -1,3 +1,6 @@
 # ComfyUI_PerpNeg
 
-WARNING: This is strictly experimental and will replace the sampling function globally with Perp-Neg sampling
+WARNING: Experimental code, might have incompatibilities and edge cases.
+
+Implimentation of Perp-Neg: https://perp-neg.github.io/
+Includes Tonemap and CFG Rescale options
