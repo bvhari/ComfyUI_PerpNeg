@@ -548,7 +548,7 @@ class KSamplerAdvancedPerpNeg:
                  "noise_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                  "steps": ("INT", {"default": 20, "min": 1, "max": 10000}),
                  "cfg": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 100.0}),
-                 "neg_scale": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 100.0}),
+                 "neg_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0}),
                  "sampler_name": (comfy.samplers.KSampler.SAMPLERS, ),
                  "scheduler": (comfy.samplers.KSampler.SCHEDULERS, ),
                  "positive": ("CONDITIONING", ),
