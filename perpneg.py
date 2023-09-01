@@ -6,6 +6,7 @@ import comfy.utils
 import latent_preview
 import numpy as np
 import math
+import types
 
 
 def prepare_noise(latent_image, seed, noise_inds=None):
@@ -87,6 +88,50 @@ def cleanup_additional_models(models):
             m.cleanup()
 
 
+def process_conds_comfy(self, positive, negative, _noise=None, _device=None, broadcast_cond_=True):
+    from comfy.sample import broadcast_cond
+    from comfy.samplers import (resolve_cond_masks, calculate_start_end_timesteps,
+                                create_cond_with_same_area_if_none, pre_run_control,
+                                apply_empty_x_to_equal_area, encode_adm)
+    noise = _noise
+    if not hasattr(self, "device"):
+        self.device = _device
+    device = self.device
+
+    if broadcast_cond_:
+        positive = broadcast_cond(positive, noise.shape[0], device)
+        negative = broadcast_cond(negative, noise.shape[0], device)
+
+    positive = positive[:]
+    negative = negative[:]
+
+    resolve_cond_masks(positive, noise.shape[2], noise.shape[3], self.device)
+    resolve_cond_masks(negative, noise.shape[2], noise.shape[3], self.device)
+
+    calculate_start_end_timesteps(self.model_wrap, negative)
+    calculate_start_end_timesteps(self.model_wrap, positive)
+
+    # make sure each cond area has an opposite one with the same area
+    for c in positive:
+        create_cond_with_same_area_if_none(negative, c)
+    for c in negative:
+        create_cond_with_same_area_if_none(positive, c)
+
+    pre_run_control(self.model_wrap, negative + positive)
+
+    apply_empty_x_to_equal_area(list(filter(lambda c: c[1].get(
+        'control_apply_to_uncond', False) == True, positive)), negative, 'control', lambda cond_cnets, x: cond_cnets[x])
+    apply_empty_x_to_equal_area(
+        positive, negative, 'gligen', lambda cond_cnets, x: cond_cnets[x])
+
+    if self.model.is_adm():
+        positive = encode_adm(
+            self.model, positive, noise.shape[0], noise.shape[3], noise.shape[2], self.device, "positive")
+        negative = encode_adm(
+            self.model, negative, noise.shape[0], noise.shape[3], noise.shape[2], self.device, "negative")
+    return (positive, negative)
+
+
 def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, negative, nocond, latent_image, denoise=1.0, disable_noise=False, start_step=None, last_step=None, force_full_denoise=False, noise_mask=None, sigmas=None, callback=None, disable_pbar=False, seed=None, extra_options_perpneg={"tonemap": False, "rescale_cfg": False, "neg_scale": 1.0}):
     device = comfy.model_management.get_torch_device()
 
@@ -105,7 +150,8 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
 
     positive_copy = broadcast_cond(positive, noise.shape[0], device)
     negative_copy = broadcast_cond(negative, noise.shape[0], device)
-    nocond_copy = broadcast_cond(nocond, noise.shape[0], device)
+    positive_nocond_copy = broadcast_cond(nocond, noise.shape[0], device)
+    negative_nocond_copy = broadcast_cond(nocond, noise.shape[0], device)
 
     neg_scale = extra_options_perpneg['neg_scale']
 
@@ -403,11 +449,12 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
 
         noise_pred_pos, noise_pred_neg = calc_cond_uncond_batch(
             model_function, cond, uncond, x, timestep, max_total_area, cond_concat, model_options)
-        noise_pred_nocond, _ = calc_cond_uncond_batch(
-            model_function, nocond_copy, nocond_copy, x, timestep, max_total_area, cond_concat, model_options)
+        noise_pred_nocond_pos, noise_pred_nocond_neg = calc_cond_uncond_batch(
+            model_function, positive_nocond_copy, negative_nocond_copy, x, timestep, max_total_area, cond_concat, model_options)
 
-        pos = noise_pred_pos - noise_pred_nocond
-        neg = noise_pred_neg - noise_pred_nocond
+        noise_pred_nocond = noise_pred_nocond_pos
+        pos = noise_pred_pos - noise_pred_nocond_pos
+        neg = noise_pred_neg - noise_pred_nocond_neg
         perp = ((torch.mul(pos, neg).sum())/(torch.norm(neg)**2)) * neg
         perp_neg = perp * neg_scale
 
@@ -480,6 +527,8 @@ def sample_perpneg(model, noise, steps, cfg, sampler_name, scheduler, positive, 
 
     sampler = comfy.samplers.KSampler(real_model, steps=steps, device=device, sampler=sampler_name,
                                       scheduler=scheduler, denoise=denoise, model_options=model.model_options)
+    positive_nocond_copy, negative_nocond_copy = process_conds_comfy(
+        sampler, positive_nocond_copy, negative_nocond_copy, noise, device, False)
 
     try:
         samples = sampler.sample(noise, positive_copy, negative_copy, cfg=cfg, latent_image=latent_image, start_step=start_step, last_step=last_step,
