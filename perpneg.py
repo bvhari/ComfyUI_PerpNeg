@@ -90,7 +90,7 @@ def cleanup_additional_models(models):
 
 def process_conds_comfy(self, positive, negative, _noise=None, _device=None, broadcast_cond_=True):
     from comfy.sample import broadcast_cond
-    from comfy.samplers import (resolve_cond_masks, calculate_start_end_timesteps,
+    from comfy.samplers import (resolve_areas_and_cond_masks, calculate_start_end_timesteps,
                                 create_cond_with_same_area_if_none, pre_run_control,
                                 apply_empty_x_to_equal_area, encode_adm)
     noise = _noise
@@ -105,8 +105,8 @@ def process_conds_comfy(self, positive, negative, _noise=None, _device=None, bro
     positive = positive[:]
     negative = negative[:]
 
-    resolve_cond_masks(positive, noise.shape[2], noise.shape[3], self.device)
-    resolve_cond_masks(negative, noise.shape[2], noise.shape[3], self.device)
+    resolve_areas_and_cond_masks(positive, noise.shape[2], noise.shape[3], self.device)
+    resolve_areas_and_cond_masks(negative, noise.shape[2], noise.shape[3], self.device)
 
     calculate_start_end_timesteps(self.model_wrap, negative)
     calculate_start_end_timesteps(self.model_wrap, positive)
