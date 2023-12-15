@@ -1,4 +1,6 @@
-# ComfyUI_PerpNeg
+# This project is now depreciated as Perp-Neg is now available in ComfyUI itself.
+
+ComfyUI_PerpNeg
 
 WARNING: Experimental code, might have incompatibilities and edge cases.
 
